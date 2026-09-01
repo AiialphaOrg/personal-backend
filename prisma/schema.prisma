@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model StockQuoteCache {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  price     Decimal  @db.Decimal(18, 6)
+  currency  String   @default("USD")
+  source    String   @default("yahoo")
+  fetchedAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fetchedAt])
+  @@map("stock_quote_cache")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  password   String?
+  authMethod String   @default("password") // password | google
+  name       String?
+  avatarUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+
+  wallets          Wallet[]
+  transactions     Transaction[]
+  debts            Debt[]
+  goals            Goal[]
+  tasks            Task[]
+  subscriptions    Subscription[]
+  plannedPurchases PlannedPurchase[]
+
+  @@map("users")
+}
+
+
+model Wallet {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  kind      WalletKind @default(SPENDING)
+  balance   Decimal    @default(0) @db.Decimal(18, 2)
+  currency  String     @default("₦")
+  icon      String     @default("bank")
+  symbol    String?
+  shares    Decimal?   @db.Decimal(18, 6)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("wallets")
+}
+
+enum WalletKind {
+  SPENDING
+  SAVINGS
+  INVESTMENT
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletId  String?
+  wallet    Wallet?  @relation(fields: [walletId], references: [id], onDelete: SetNull)
+  title     String
+  amount    Decimal  @db.Decimal(18, 2)
+  type      String   // expense | income | transfer | i_owe | owed_to_me | bill
+  category  String   @default("general")
+  person    String?
+  date      String
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([userId, createdAt])
+  @@index([userId, date])
+  @@index([userId, type])
+  @@index([userId, category])
+  @@map("transactions")
+}
+
+model Debt {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  person    String
+  amount    Decimal  @db.Decimal(18, 2)
+  remaining Decimal  @default(0) @db.Decimal(18, 2)
+  type      String   // i_owe | owed_to_me
+  category  String   @default("loan")
+  walletId  String?
+  dueDate   String?
+  status    String   @default("open") // open | partial | paid
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, type])
+  @@map("debts")
+}
+
+
+model Goal {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  targetAmount  Decimal  @db.Decimal(18, 2)
+  currentAmount Decimal  @default(0) @db.Decimal(18, 2)
+  category      String   @default("general")
+  targetDate    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@map("goals")
+}
+
+model Task {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  completed Boolean  @default(false)
+  dueDate   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("tasks")
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  amount        Decimal  @db.Decimal(18, 2)
+  frequency     String   @default("monthly") // weekly | monthly | yearly
+  billingDay    Int?     // day of month e.g. 5
+  walletId      String?
+  category      String   @default("general")
+  enabled       Boolean  @default(true)
+  lastChargedAt String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@map("subscriptions")
+}
+
+model PlannedPurchase {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  estimatedAmount Decimal  @db.Decimal(18, 2)
+  frequency       String   @default("once") // once | weekly | monthly
+  category        String   @default("general")
+  status          String   @default("planned") // planned | purchased
+  walletId        String?
+  purchasedAt     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@map("planned_purchases")
+}
+
