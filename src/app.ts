@@ -10,13 +10,33 @@ import { errorHandler, notFound } from "./middleware/error.js"
 export function createApp() {
   const app = express()
 
-  // Full CORS configuration with preflight support
+  // Dynamic CORS middleware - handles credentials + dynamic origin + instant OPTIONS preflight
+  app.use((req, res, next) => {
+    const origin = req.headers.origin
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin)
+      res.setHeader("Access-Control-Allow-Credentials", "true")
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "*")
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Api-Version, X-CSRF-Token"
+    )
+    res.setHeader("Access-Control-Expose-Headers", "Content-Length, X-Kuma-Revision")
+    res.setHeader("Access-Control-Max-Age", "86400")
+
+    if (req.method === "OPTIONS") {
+      return res.status(204).end()
+    }
+    next()
+  })
+
+  // Also keep cors package as secondary safety layer
   app.use(
     cors({
-      origin: (origin, callback) => {
-        // Allow all origins (including undefined for same-origin or tools)
-        callback(null, true)
-      },
+      origin: (origin, callback) => callback(null, true),
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
       allowedHeaders: [
@@ -28,13 +48,8 @@ export function createApp() {
         "X-Api-Version",
         "X-CSRF-Token",
       ],
-      exposedHeaders: ["Content-Length", "X-Kuma-Revision"],
-      maxAge: 86400,
     })
   )
-
-  // Explicitly respond to preflight OPTIONS for any route
-  app.options("*", cors())
 
   app.use(express.json({ limit: "1mb" }))
   app.use(requestLogger)
