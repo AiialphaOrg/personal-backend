@@ -9,7 +9,33 @@ import { errorHandler, notFound } from "./middleware/error.js"
 
 export function createApp() {
   const app = express()
-  app.use(cors({ origin: true }))
+
+  // Full CORS configuration with preflight support
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow all origins (including undefined for same-origin or tools)
+        callback(null, true)
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+      allowedHeaders: [
+        "Origin",
+        "X-Requested-With",
+        "Content-Type",
+        "Accept",
+        "Authorization",
+        "X-Api-Version",
+        "X-CSRF-Token",
+      ],
+      exposedHeaders: ["Content-Length", "X-Kuma-Revision"],
+      maxAge: 86400,
+    })
+  )
+
+  // Explicitly respond to preflight OPTIONS for any route
+  app.options("*", cors())
+
   app.use(express.json({ limit: "1mb" }))
   app.use(requestLogger)
 
