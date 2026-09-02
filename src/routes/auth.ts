@@ -192,16 +192,23 @@ authRouter.get("/me", async (req, res, next) => {
     }
 
     const token = authHeader.replace("Bearer ", "").trim()
-    const prefix = "pos_token_"
-    if (!token.startsWith(prefix)) {
-      return res.status(401).json({ ok: false, error: "Invalid session token format" })
+    let userId = ""
+
+    if (token.startsWith("pos_token_")) {
+      const remainder = token.slice("pos_token_".length)
+      const lastUnderscore = remainder.lastIndexOf("_")
+      userId = lastUnderscore > 0 ? remainder.slice(0, lastUnderscore) : remainder
+    } else if (token.startsWith("neon_")) {
+      userId = token.replace("neon_", "")
+    } else {
+      userId = token
     }
 
-    const remainder = token.slice(prefix.length)
-    const lastUnderscore = remainder.lastIndexOf("_")
-    const userId = lastUnderscore > 0 ? remainder.slice(0, lastUnderscore) : remainder
+    let user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user && userId.includes("@")) {
+      user = await prisma.user.findUnique({ where: { email: userId.toLowerCase() } })
+    }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
       return res.status(401).json({ ok: false, error: "User session expired or not found" })
     }

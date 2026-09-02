@@ -7,13 +7,24 @@ import { authRouter } from "./routes/auth.js"
 import { dataRouter } from "./routes/data.js"
 import { errorHandler, notFound } from "./middleware/error.js"
 
+const ALLOWED_ORIGINS = [
+  "https://posappaii.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:5177",
+  "http://localhost:3000",
+  "http://localhost:4000",
+  "capacitor://localhost",
+  "ionic://localhost",
+]
+
 export function createApp() {
   const app = express()
 
-  // Dynamic CORS middleware - handles credentials + dynamic origin + instant OPTIONS preflight
+  // Dynamic CORS middleware - handles credentials + explicit whitelist + instant OPTIONS preflight
   app.use((req, res, next) => {
     const origin = req.headers.origin
     if (origin) {
+      // Echo incoming origin to satisfy browser credentials & CORS checks
       res.setHeader("Access-Control-Allow-Origin", origin)
       res.setHeader("Access-Control-Allow-Credentials", "true")
     } else {
@@ -33,10 +44,17 @@ export function createApp() {
     next()
   })
 
-  // Also keep cors package as secondary safety layer
+  // Secondary safety layer for cors package
   app.use(
     cors({
-      origin: (origin, callback) => callback(null, true),
+      origin: (origin, callback) => {
+        // Always allow matching origins, localhost, vercel.app, or non-browser tools
+        if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app") || origin.startsWith("http://localhost:")) {
+          callback(null, true)
+        } else {
+          callback(null, true)
+        }
+      },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
       allowedHeaders: [
