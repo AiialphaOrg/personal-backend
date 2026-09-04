@@ -614,7 +614,6 @@ dataRouter.post("/transactions", requireAuth, async (req: AuthenticatedRequest, 
     const userId = req.userId!
     const { id, title, amount, type, category, person, date, walletId, wallet, fromWallet, toWallet, note } = req.body || {}
 
-    const transactionId = id || `t-${Date.now()}`
     const targetWalletId = walletId || wallet || fromWallet
     const parsedAmount = Number(amount) || 0
 
@@ -634,7 +633,80 @@ dataRouter.post("/transactions", requireAuth, async (req: AuthenticatedRequest, 
       }
     }
 
-    // Adjust wallet balances
+    // Check if updating existing transaction
+    let existing = null
+    if (id) {
+      existing = await prisma.transaction.findFirst({ where: { id, userId } })
+    }
+
+    if (existing) {
+      // Revert previous transaction impact on old wallet
+      const oldAmount = Number(existing.amount) || 0
+      const oldWalletId = existing.walletId
+      const oldType = existing.type.toLowerCase()
+
+      if (oldWalletId) {
+        if (oldType === "expense" || oldType === "bill") {
+          await prisma.wallet.update({
+            where: { id: oldWalletId },
+            data: { balance: { increment: oldAmount } },
+          }).catch(() => {})
+        } else if (oldType === "income") {
+          await prisma.wallet.update({
+            where: { id: oldWalletId },
+            data: { balance: { decrement: oldAmount } },
+          }).catch(() => {})
+        }
+      }
+
+      // Apply new transaction impact on target wallet
+      if (targetWalletId) {
+        if (type === "expense" || type === "bill") {
+          await prisma.wallet.update({
+            where: { id: targetWalletId },
+            data: { balance: { decrement: parsedAmount } },
+          }).catch(() => {})
+        } else if (type === "income") {
+          await prisma.wallet.update({
+            where: { id: targetWalletId },
+            data: { balance: { increment: parsedAmount } },
+          }).catch(() => {})
+        }
+      }
+
+      const updated = await prisma.transaction.update({
+        where: { id: existing.id },
+        data: {
+          walletId: targetWalletId || undefined,
+          title: title || existing.title,
+          amount: parsedAmount,
+          type: (type || existing.type).toLowerCase(),
+          category: category || existing.category,
+          person: person !== undefined ? person : existing.person,
+          date: date || existing.date,
+          note: note !== undefined ? note : existing.note,
+        },
+      })
+
+      return res.json({
+        ok: true,
+        transaction: {
+          id: updated.id,
+          title: updated.title,
+          amount: Number(updated.amount),
+          type: updated.type.toLowerCase(),
+          category: updated.category,
+          date: updated.date,
+          walletId: updated.walletId,
+          note: updated.note,
+        },
+      })
+    }
+
+    // New transaction creation
+    const transactionId = id || `t-${Date.now()}`
+
+    // Adjust wallet balances for new transaction
     if (targetWalletId) {
       if (type === "expense" || type === "bill") {
         await prisma.wallet.update({
@@ -685,6 +757,7 @@ dataRouter.post("/transactions", requireAuth, async (req: AuthenticatedRequest, 
         category: created.category,
         date: created.date,
         walletId: created.walletId,
+        note: created.note,
       },
     })
   } catch (err) {
@@ -696,6 +769,24 @@ dataRouter.delete("/transactions/:id", requireAuth, async (req: AuthenticatedReq
   try {
     const userId = req.userId!
     const id = String(req.params.id)
+
+    const existing = await prisma.transaction.findFirst({ where: { id, userId } })
+    if (existing && existing.walletId) {
+      const oldAmount = Number(existing.amount) || 0
+      const oldType = existing.type.toLowerCase()
+      if (oldType === "expense" || oldType === "bill") {
+        await prisma.wallet.update({
+          where: { id: existing.walletId },
+          data: { balance: { increment: oldAmount } },
+        }).catch(() => {})
+      } else if (oldType === "income") {
+        await prisma.wallet.update({
+          where: { id: existing.walletId },
+          data: { balance: { decrement: oldAmount } },
+        }).catch(() => {})
+      }
+    }
+
     await prisma.transaction.deleteMany({ where: { id, userId } })
     return res.json({ ok: true, id })
   } catch (err) {
